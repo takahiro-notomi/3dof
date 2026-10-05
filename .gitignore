@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# SwiftPM build output
+.build/
+.swiftpm/
+Package.resolved
+
+# Built app bundle (make app で生成)
+AirUltrawide.app/
+
+# Xcode
+*.xcodeproj/xcuserdata/
+DerivedData/
