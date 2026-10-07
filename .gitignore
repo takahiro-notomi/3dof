@@ -15,3 +15,6 @@ DerivedData/
 
 # Claude Code のローカル設定
 .claude/
+
+# 配布用 zip（make dist で生成）
+dist/

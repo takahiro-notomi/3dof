@@ -2,13 +2,16 @@
 #   make app   … リリースビルドして AirUltrawide.app を作り、署名する
 #   make run   … app を作って起動
 #   make cert  … 自己署名のコード署名証明書をログインキーチェーンに作る（初回のみ）
+#   make dist  … 配布用に ad-hoc 署名した app を dist/AirUltrawide-<version>.zip にまとめる
 # 自己署名証明書で署名すると、再ビルドしても「画面収録」の許可が外れない。
 
 APP      := AirUltrawide.app
 IDENTITY := AirUltrawide Local
 BIN      := .build/release/AirUltrawide
 
-.PHONY: app run cert clean
+.PHONY: app run cert dist clean
+
+VERSION := $(shell /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)
 
 app:
 	swift build -c release
@@ -38,5 +41,16 @@ cert:
 	rm -rf $$tmp; \
 	echo "証明書 '$(IDENTITY)' を作成しました"
 
+# 配布用：個人の証明書を埋め込まないよう ad-hoc 署名にする
+dist:
+	swift build -c release
+	rm -rf $(APP) dist
+	mkdir -p $(APP)/Contents/MacOS dist
+	cp $(BIN) $(APP)/Contents/MacOS/AirUltrawide
+	cp Resources/Info.plist $(APP)/Contents/Info.plist
+	codesign --force --entitlements Resources/AirUltrawide.entitlements -s - $(APP)
+	ditto -c -k --keepParent $(APP) dist/AirUltrawide-$(VERSION).zip
+	@echo "dist/AirUltrawide-$(VERSION).zip を作成しました"
+
 clean:
-	rm -rf .build $(APP)
+	rm -rf .build $(APP) dist
