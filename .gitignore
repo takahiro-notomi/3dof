@@ -12,3 +12,6 @@ AirUltrawide.app/
 # Xcode
 *.xcodeproj/xcuserdata/
 DerivedData/
+
+# Claude Code のローカル設定
+.claude/

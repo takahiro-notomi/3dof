@@ -18,6 +18,8 @@ app:
 	cp Resources/Info.plist $(APP)/Contents/Info.plist
 	@if security find-certificate -c "$(IDENTITY)" >/dev/null 2>&1; then \
 		codesign --force --entitlements Resources/AirUltrawide.entitlements -s "$(IDENTITY)" $(APP); \
+	elif dev=$$(security find-identity -v -p codesigning | grep -m1 -o '"Apple Development[^"]*"' | tr -d '"'); [ -n "$$dev" ]; then \
+		codesign --force --entitlements Resources/AirUltrawide.entitlements -s "$$dev" $(APP); \
 	else \
 		echo "※ 証明書 '$(IDENTITY)' がないため ad-hoc 署名します（make cert で作成可能）"; \
 		codesign --force --entitlements Resources/AirUltrawide.entitlements -s - $(APP); \
