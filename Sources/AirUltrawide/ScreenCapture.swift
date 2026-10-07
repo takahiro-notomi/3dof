@@ -24,6 +24,10 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
 
     /// 新しいフレームが届いたとき（キャプチャキュー上）
     var onFrame: (() -> Void)?
+    /// ストリームがエラーで止まったとき（キャプチャキュー上）
+    var onStop: ((Error) -> Void)?
+
+    private var target: (displayID: CGDirectDisplayID, width: Int, height: Int, fps: Int)?
 
     init(device: MTLDevice) {
         self.device = device
@@ -37,6 +41,7 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     }
 
     func start(displayID: CGDirectDisplayID, width: Int, height: Int, fps: Int = 60) async throws {
+        target = (displayID, width, height, fps)
         // 仮想ディスプレイが ScreenCaptureKit から見えるまで少し待つことがある
         var display: SCDisplay?
         for _ in 0..<20 {
@@ -70,6 +75,13 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         stream = nil
     }
 
+    /// スリープ復帰後などに、前回と同じ設定でストリームを作り直す
+    func restart() async throws {
+        guard let t = target else { return }
+        await stop()
+        try await start(displayID: t.displayID, width: t.width, height: t.height, fps: t.fps)
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sb: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sb.isValid, let pb = sb.imageBuffer, isComplete(sb), let cache = textureCache else { return }
 
@@ -88,6 +100,7 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         Log.write("キャプチャ停止: \(error)")
+        onStop?(error)
     }
 
     /// 変化のない「idle」フレームは捨てる

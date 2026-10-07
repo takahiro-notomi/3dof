@@ -62,6 +62,16 @@ final class AirHID: @unchecked Sendable {
     /// ジャイロのキャリブレーションからやり直す（静止させて呼ぶ）
     func recalibrate() { pendingReset = true }
 
+    /// IMU ストリームの開始コマンドを送り直す（スリープ復帰後、グラスが送信を止めていることがある）
+    func resumeStream() {
+        guard let rl = runLoop else { return }
+        CFRunLoopPerformBlock(rl, CFRunLoopMode.defaultMode.rawValue) { [self] in
+            guard let dev = imuDevice else { return }
+            send(dev, IMUProtocol.command(IMUProtocol.cmdIMUStream, data: [0x01]))
+        }
+        CFRunLoopWakeUp(rl)
+    }
+
     // MARK: - IMU スレッド
 
     private func threadMain() {

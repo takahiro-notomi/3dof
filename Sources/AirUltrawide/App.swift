@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKey: HotKey?
     private var imuConnected = false
     private var configureAttempts: [String: Int] = [:]
+    private var restartingCapture = false
 
     func applicationDidFinishLaunching(_ note: Notification) {
         Log.write("起動")
@@ -38,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         virtualDisplay = vd
         capture = ScreenCapture(device: device)
+        capture.onStop = { [weak self] _ in
+            // エラーで止まった（スリープ・画面構成の変化など）→ 少し待って作り直す
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self?.restartCapture(reason: "ストリーム停止") }
+        }
 
         hid.onConnectionChange = { [weak self] connected in
             DispatchQueue.main.async { self?.imuConnected = connected }
@@ -46,6 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(self, selector: #selector(didWake(_:)), name: NSWorkspace.didWakeNotification, object: nil)
+        ws.addObserver(self, selector: #selector(didWake(_:)), name: NSWorkspace.screensDidWakeNotification, object: nil)
 
         // 仮想ディスプレイが NSScreen に現れるまで少し待ってから組み立てる
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
@@ -77,6 +85,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func screensChanged() {
         // グラスの抜き差しなどで画面構成が変わったら組み直す（setUpGlasses は何度呼んでもよい）
         setUpGlasses()
+    }
+
+    // MARK: - スリープ復帰
+
+    @objc private func didWake(_ note: Notification) {
+        Log.write("復帰: \(note.name.rawValue)")
+        // 画面構成が落ち着くまで待ってから、グラス設定・IMU・キャプチャをやり直す
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
+            configureAttempts = [:]
+            tearDownWindow()
+            setUpGlasses()
+            hid.resumeStream()
+            restartCapture(reason: "スリープ復帰")
+        }
+    }
+
+    private func restartCapture(reason: String) {
+        guard let capture, !restartingCapture else { return }
+        restartingCapture = true
+        Task { @MainActor in
+            defer { restartingCapture = false }
+            for attempt in 1...5 {
+                do {
+                    try await capture.restart()
+                    Log.write("キャプチャ再開（\(reason)）")
+                    return
+                } catch {
+                    Log.write("キャプチャ再開失敗 \(attempt)/5: \(error.localizedDescription)")
+                    try? await Task.sleep(for: .seconds(Double(attempt)))
+                }
+            }
+        }
     }
 
     private func setUpGlasses() {
